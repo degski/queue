@@ -310,6 +310,7 @@ int main ( ) {
 
     l1.add_to_head ( );
     l1.add_to_head ( );
+    l1.add_to_tail ( );
     l1.add_to_head ( );
     l1.add_to_head ( );
 
