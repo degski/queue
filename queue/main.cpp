@@ -275,10 +275,12 @@ struct dll {
 
     void move_tail_to_head ( ) noexcept {
         block_pointer new_tail = tail->prev;
-        new_tail->next         = nullptr;
-        tail->prev             = nullptr;
-        tail->next             = head;
-        head->prev             = tail;
+        // New sentinels.
+        new_tail->next = nullptr;
+        tail->prev     = nullptr;
+        // Move to front.
+        tail->next = head;
+        head->prev = tail;
         // Final assignments.
         head = tail;
         tail = new_tail;
@@ -286,10 +288,12 @@ struct dll {
 
     void move_head_to_tail ( ) noexcept {
         block_pointer new_head = head->next;
-        new_head->prev         = nullptr;
-        head->next             = nullptr;
-        head->prev             = tail;
-        tail->next             = head;
+        // New sentinels.
+        new_head->prev = nullptr;
+        head->next     = nullptr;
+        // Move to back.
+        head->prev = tail;
+        tail->next = head;
         // Final assignments.
         tail = head;
         head = new_head;
