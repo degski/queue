@@ -116,15 +116,15 @@ struct block {
 
     public:
     // Constructor.
-    explicit block ( block_pointer ptr_ ) noexcept : prev{ nullptr }, next{ ptr_ } {}
+    explicit block ( block_pointer pptr_, block_pointer nptr_ ) noexcept : prev{ pptr_ }, next{ nptr_ } {}
     // Operator new/delete.
     [[nodiscard]] static void * operator new ( std::size_t ) noexcept {
         return pdr::malloc ( sizeof ( block ) );
     } // O-o-m not handled, crash is to be expected.
     static void operator delete ( void * ptr_ ) noexcept { pdr::free ( ptr_ ); }
     // Factory.
-    [[nodiscard]] static block_pointer make ( block_pointer ptr_ = nullptr ) noexcept {
-        return reinterpret_cast<block_pointer> ( new block ( ptr_ ) );
+    [[nodiscard]] static block_pointer make ( block_pointer pptr_, block_pointer nptr_ ) noexcept {
+        return reinterpret_cast<block_pointer> ( new block ( pptr_, nptr_ ) );
     }
     // Front.
     [[nodiscard]] reference front ( ) noexcept { return m_data[ 0 ]; }
@@ -248,7 +248,7 @@ struct dll {
 
     block_pointer head, tail;
 
-    dll ( ) noexcept : head{ block::make ( ) }, tail{ head } {}
+    dll ( ) noexcept : head{ block::make ( nullptr, nullptr ) }, tail{ head } {}
 
     ~dll ( ) noexcept {
         while ( head ) {
@@ -258,20 +258,15 @@ struct dll {
         }
     }
 
-    [[nodiscard]] block_pointer push ( block_pointer head_ ) noexcept { return head_->prev = block::make ( head_ ); }
-
-    void push ( ) noexcept { head = push ( head ); }
-
-    void print_block ( block_pointer ptr_ ) noexcept { std::cout << ptr_ << ' ' << ptr_->prev << ' ' << ptr_->next << nl; }
-
-    void print ( ) noexcept {
-        block_pointer ptr = head;
-        while ( ptr ) {
-            print_block ( ptr );
-            ptr = ptr->next;
-        }
-        std::cout << nl;
+    [[nodiscard]] block_pointer add_to_head ( block_pointer head_ ) noexcept {
+        return head_->prev = block::make ( nullptr, head_ );
     }
+    [[nodiscard]] block_pointer add_to_tail ( block_pointer tail_ ) noexcept {
+        return tail_->next = block::make ( tail_, nullptr );
+    }
+
+    void add_to_head ( ) noexcept { head = add_to_head ( head ); }
+    void add_to_tail ( ) noexcept { tail = add_to_tail ( tail ); }
 
     void move_tail_to_head ( ) noexcept {
         block_pointer new_tail = tail->prev;
@@ -298,16 +293,25 @@ struct dll {
         tail = head;
         head = new_head;
     }
+
+    void print ( ) noexcept {
+        block_pointer ptr = head;
+        while ( ptr ) {
+            std::cout << ptr << ' ' << ptr->prev << ' ' << ptr->next << nl;
+            ptr = ptr->next;
+        }
+        std::cout << nl;
+    }
 };
 
 int main ( ) {
 
     dll<int> l1;
 
-    l1.push ( );
-    l1.push ( );
-    l1.push ( );
-    l1.push ( );
+    l1.add_to_head ( );
+    l1.add_to_head ( );
+    l1.add_to_head ( );
+    l1.add_to_head ( );
 
     l1.print ( );
 
