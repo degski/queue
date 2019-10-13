@@ -116,7 +116,7 @@ struct block {
 
     public:
     // Constructor.
-    explicit block ( block_pointer ptr_ ) : prev{ nullptr }, next{ ptr_ } {}
+    explicit block ( block_pointer ptr_ ) noexcept : prev{ nullptr }, next{ ptr_ } {}
     // Operator new/delete.
     [[nodiscard]] static void * operator new ( std::size_t ) noexcept {
         return pdr::malloc ( sizeof ( block ) );
