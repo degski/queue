@@ -62,7 +62,7 @@ struct block {
     block_pointer next = nullptr;
     block_type data;
 
-    // Operator new/delete.
+    // Operators new/delete.
     [[nodiscard]] static void * operator new ( std::size_t ) noexcept {
         return MALLOC ( sizeof ( block ) );
     } // OOM not handled, crash is to be expected.
@@ -116,31 +116,34 @@ class queue {
     template<typename... Args>
     void emplace ( Args &&... args_ ) noexcept {
         if ( storage_tail->end ( ) == tail ) {
-            add_storage_to_tail ( );
-            tail = storage_tail->begin ( );
+            storage_tail = storage_tail->next = block::make ( );
+            tail                              = storage_tail->begin ( );
         }
         *tail++ = { std::forward<Args> ( args_ )... };
     }
 
     void push ( rv_reference value_ ) noexcept {
         if ( storage_tail->end ( ) == tail ) {
-            add_storage_to_tail ( );
-            tail = storage_tail->begin ( );
+            storage_tail = storage_tail->next = block::make ( );
+            tail                              = storage_tail->begin ( );
         }
         *tail++ = std::move ( value_ );
     }
     void push ( const_reference value_ ) noexcept {
         if ( storage_tail->end ( ) == tail ) {
-            add_storage_to_tail ( );
-            tail = storage_tail->begin ( );
+            storage_tail = storage_tail->next = block::make ( );
+            tail                              = storage_tail->begin ( );
         }
         *tail++ = value_;
     }
 
     void pop ( ) noexcept {
         if ( storage_head->end ( ) == ++head ) {
-            move_storage_head_to_tail ( );
-            head = storage_head->begin ( );
+            block_pointer new_head = storage_head->next;
+            storage_head->next     = nullptr;
+            storage_tail = storage_tail->next = storage_head;
+            storage_head                      = new_head;
+            head                              = storage_head->begin ( );
         }
     }
 
@@ -178,18 +181,6 @@ class queue {
             }
         }
         return out_;
-    }
-
-    private:
-    [[nodiscard]] block_pointer add_storage_to_tail ( block_pointer tail_ ) noexcept { return tail_->next = block::make ( ); }
-    void add_storage_to_tail ( ) noexcept { storage_tail = add_storage_to_tail ( storage_tail ); }
-
-    void move_storage_head_to_tail ( ) noexcept {
-        block_pointer new_head = storage_head->next;
-        storage_head->next     = nullptr;
-        storage_tail->next     = storage_head;
-        storage_tail           = storage_head;
-        storage_head           = new_head;
     }
 };
 
