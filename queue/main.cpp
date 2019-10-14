@@ -151,6 +151,15 @@ struct queue {
         }
     }
 
+    template<typename... Args>
+    void emplace ( Args &&... args_ ) noexcept {
+        if ( std::end ( *sto_tail ) == tail ) {
+            add_storage_to_tail ( );
+            tail = std::begin ( *sto_tail );
+        }
+        *tail++ = { std::forward<Args> ( args_ )... };
+    }
+
     void push ( rv_reference value_ ) noexcept {
         if ( std::end ( *sto_tail ) == tail ) {
             add_storage_to_tail ( );
@@ -235,7 +244,7 @@ int main ( ) {
     queue.push ( 1 );
     queue.push ( 0 );
     queue.push ( -1 );
-    queue.push ( -2 );
+    queue.emplace ( -2 );
 
     std::cout << queue << nl;
 
