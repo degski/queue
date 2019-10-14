@@ -139,10 +139,10 @@ class queue {
 
     void pop ( ) noexcept {
         if ( storage_head->end ( ) == ++head ) {
-            storage_pointer new_head = storage_head->next;
-            storage_head->next       = nullptr;
+            storage_pointer new_storage_head = storage_head->next;
+            storage_head->next               = nullptr;
             storage_tail = storage_tail->next = storage_head;
-            storage_head                      = new_head;
+            storage_head                      = new_storage_head;
             head                              = storage_head->begin ( );
         }
     }
