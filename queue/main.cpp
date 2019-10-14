@@ -178,13 +178,35 @@ struct queue {
 
     [[nodiscard]] bool empty ( ) const noexcept { return head == tail; }
 
-    void print ( ) noexcept {
+    void print_block_pointers ( ) const noexcept {
         block_pointer ptr = sto_head;
         while ( ptr ) {
             std::cout << ptr << ' ' << ptr->next << nl;
             ptr = ptr->next;
         }
         std::cout << nl;
+    }
+
+    template<typename Stream>
+    [[maybe_unused]] friend Stream & operator<< ( Stream & out_, queue const & q_ ) noexcept {
+        block_pointer ptr = q_.sto_head;
+        iterator curr     = q_.head;
+        while ( ptr ) {
+            if ( &*curr == &*q_.tail )
+                break;
+            if constexpr ( std::is_same<typename Stream::char_type, wchar_t>::value ) {
+                out_ << *curr << L' ';
+            }
+            else {
+                out_ << *curr << ' ';
+            }
+            if ( std::end ( *ptr ) == ++curr ) {
+                ptr = ptr->next;
+                if ( ptr )
+                    curr = std::begin ( *ptr );
+            }
+        }
+        return out_;
     }
 
     private:
@@ -205,6 +227,7 @@ int main ( ) {
 
     queue<int, 4> queue;
 
+    queue.push ( 6 );
     queue.push ( 5 );
     queue.push ( 4 );
     queue.push ( 3 );
@@ -214,10 +237,7 @@ int main ( ) {
     queue.push ( -1 );
     queue.push ( -2 );
 
-    for ( auto x = 0; x < 8; ++x ) {
-        std::cout << queue.front ( ) << '\n';
-        queue.pop ( );
-    }
+    std::cout << queue << nl;
 
     return EXIT_SUCCESS;
 }
