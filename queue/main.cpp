@@ -92,240 +92,119 @@ inline void free ( void * ptr ) noexcept { std::free ( ptr ); }
 #endif
 } // namespace pdr
 
-// https://codereview.stackexchange.com/a/197739/194172
-
 template<typename Type, std::size_t N>
 struct block {
 
-    using value_type             = Type;
-    using pointer                = value_type *;
-    using const_pointer          = value_type const *;
-    using reference              = value_type &;
-    using const_reference        = value_type const &;
-    using block_type             = std::array<value_type, N>;
-    using block_pointer          = block *;
-    using iterator               = typename block_type::iterator;
-    using const_iterator         = typename block_type::const_iterator;
-    using reverse_iterator       = typename block_type::reverse_iterator;
-    using const_reverse_iterator = typename block_type::const_reverse_iterator;
+    using value_type    = Type;
+    using block_type    = std::array<value_type, N>;
+    using block_pointer = block *;
+    using iterator      = typename block_type::iterator;
 
-    block *prev, *next;
+    block_pointer next = nullptr;
 
     private:
     block_type m_data;
 
     public:
     // Constructor.
-    explicit block ( block_pointer pptr_, block_pointer nptr_ ) noexcept : prev{ pptr_ }, next{ nptr_ } {}
+    explicit block ( ) noexcept {}
     // Operator new/delete.
     [[nodiscard]] static void * operator new ( std::size_t ) noexcept {
         return pdr::malloc ( sizeof ( block ) );
     } // O-o-m not handled, crash is to be expected.
     static void operator delete ( void * ptr_ ) noexcept { pdr::free ( ptr_ ); }
     // Factory.
-    [[nodiscard]] static block_pointer make ( block_pointer pptr_, block_pointer nptr_ ) noexcept {
-        return reinterpret_cast<block_pointer> ( new block ( pptr_, nptr_ ) );
-    }
-    // Front.
-    [[nodiscard]] reference front ( ) noexcept { return m_data[ 0 ]; }
-    [[nodiscard]] const_reference front ( ) const noexcept { return m_data[ 0 ]; }
-    // Back.
-    [[nodiscard]] reference back ( ) noexcept { return m_data[ N - 1 ]; }
-    [[nodiscard]] const_reference back ( ) const noexcept { return m_data[ N - 1 ]; }
-    // Data.
-    [[nodiscard]] pointer data ( ) noexcept { return m_data.m_data ( ); }
-    [[nodiscard]] const_pointer data ( ) const noexcept { return m_data.m_data ( ); }
+    [[nodiscard]] static block_pointer make ( ) noexcept { return reinterpret_cast<block_pointer> ( new block ); }
     // Iterators.
     [[nodiscard]] iterator begin ( ) noexcept { return std::begin ( m_data ); }
-    [[nodiscard]] const_iterator begin ( ) const noexcept { return std::begin ( m_data ); }
-    [[nodiscard]] const_iterator cbegin ( ) const noexcept { return std::cbegin ( m_data ); }
-
     [[nodiscard]] iterator end ( ) noexcept { return std::end ( m_data ); }
-    [[nodiscard]] const_iterator end ( ) const noexcept { return std::end ( m_data ); }
-    [[nodiscard]] const_iterator cend ( ) const noexcept { return std::cend ( m_data ); }
-
-    [[nodiscard]] reverse_iterator rbegin ( ) noexcept { return std::rbegin ( m_data ); }
-    [[nodiscard]] const_reverse_iterator rbegin ( ) const noexcept { return std::rbegin ( m_data ); }
-    [[nodiscard]] const_reverse_iterator crbegin ( ) const noexcept { return std::crbegin ( m_data ); }
-
-    [[nodiscard]] reverse_iterator rend ( ) noexcept { return std::rend ( m_data ); }
-    [[nodiscard]] const_reverse_iterator rend ( ) const noexcept { return std::rend ( m_data ); }
-    [[nodiscard]] const_reverse_iterator crend ( ) const noexcept { return std::crend ( m_data ); }
 };
 
-/*
-template<typename Type, std::size_t N = 5>
-class queue {
+template<typename Type, std::size_t Size = 16u>
+struct queue {
 
-    using block         = block<Type, N>;
+    using block         = block<Type, Size>;
     using block_pointer = block *;
-    using iterator      = typename block::iterator;
 
-    public:
-    static_assert ( std::is_trivially_copyable<Type>::value, "Type must be trivially copyable!" );
-
-    using value_type          = Type;
-    using optional_value_type = std::optional<value_type>;
-    using pointer             = value_type *;
-    using const_pointer       = value_type const *;
+    using value_type    = Type;
+    using pointer       = value_type *;
+    using const_pointer = value_type const *;
 
     using reference       = value_type &;
     using const_reference = value_type const &;
     using rv_reference    = value_type &&;
 
-    using size_type        = std::size_t;
-    using signed_size_type = typename std::make_signed<size_type>::type;
-    using difference_type  = signed_size_type;
+    using size_type = std::size_t;
 
-    using iterator               = typename block::iterator;
-    using const_iterator         = typename block::const_iterator;
-    using reverse_iterator       = typename block::reverse_iterator;
-    using const_reverse_iterator = typename block::const_reverse_iterator;
+    using iterator = typename block::iterator;
 
+    block_pointer sto_head, sto_tail;
+    iterator head, tail;
 
-    [[nodiscard]] void * operator new ( std::size_t n_size_ ) {
-        auto ptr = pdr::malloc ( n_size_ );
-        if ( ptr )
-            return ptr;
-        else
-            throw std::bad_alloc{};
-    }
+    queue ( ) noexcept : sto_head{ block::make ( ) }, sto_tail{ sto_head }, head{ std::begin ( *sto_head ) }, tail{ head } {}
 
-    void operator delete ( void * ptr_ ) noexcept { pdr::free ( ptr_ ); }
-
-
-    block_pointer new_block ( ) {
-        auto b = static_cast<block_pointer> ( block::operator new );
-        m_data   = b;
-        return b;
-    }
-
-    queue ( ) {
-        m_data.emplace_back ( );
-        tail = head = std::begin ( *std::begin ( m_data ) );
-    }
-
-    void push ( rv_reference value ) {
-        if ( std::end ( *std::rbegin ( m_data ) ) == tail ) {
-            std::cout << "requiring new storage (emplace)" << '\n';
-            m_data.emplace_back ( );
-            tail = std::begin ( *std::rbegin ( m_data ) );
+    ~queue ( ) noexcept {
+        while ( sto_head ) {
+            block_pointer tmp = sto_head->next;
+            block::operator delete ( reinterpret_cast<void *> ( sto_head ) );
+            sto_head = std::move ( tmp );
         }
-        *tail++ = std::move ( value );
     }
 
-    void push ( const_reference value ) {
-        if ( std::end ( *std::rbegin ( m_data ) ) == tail ) {
-            std::cout << "requiring new storage (push)" << '\n';
-            m_data.emplace_back ( );
-            tail = std::begin ( *std::rbegin ( m_data ) );
+    void push ( rv_reference value_ ) noexcept {
+        if ( std::end ( *sto_tail ) == tail ) {
+            add_storage_to_tail ( );
+            tail = std::begin ( *sto_tail );
         }
-        *tail++ = value;
+        *tail++ = std::move ( value_ );
+    }
+
+    void push ( const_reference value_ ) noexcept {
+        if ( std::end ( *sto_tail ) == tail ) {
+            add_storage_to_tail ( );
+            tail = std::begin ( *sto_tail );
+        }
+        *tail++ = value_;
     }
 
     void pop ( ) noexcept {
-        if ( std::end ( *std::begin ( m_data ) ) == ++head ) {
-            std::cout << "freeing unused memory" << '\n';
-            m_data.pop_front ( );
-            head = std::begin ( *std::begin ( m_data ) );
+        if ( std::end ( *sto_head ) == ++head ) {
+            move_storage_head_to_tail ( );
+            head = std::begin ( *sto_head );
         }
     }
 
-    value_type front ( ) const noexcept { return *head; }
+    [[nodiscard]] value_type front ( ) const noexcept { return *head; }
 
-    private:
-    block_pointer m_data = nullptr, free = nullptr;
-    iterator head, tail;
-};
-*/
-
-template<typename Type, std::size_t Size = 16u>
-struct dll {
-
-    using block         = block<Type, Size>;
-    using block_pointer = block *;
-    using iterator      = typename block::iterator;
-
-    block_pointer head, tail;
-
-    dll ( ) noexcept : head{ block::make ( nullptr, nullptr ) }, tail{ head } {}
-
-    ~dll ( ) noexcept {
-        while ( head ) {
-            block_pointer tmp = head->next;
-            block::operator delete ( reinterpret_cast<void *> ( head ) );
-            head = tmp;
-        }
-    }
-
-    [[nodiscard]] block_pointer add_to_head ( block_pointer head_ ) noexcept {
-        return head_->prev = block::make ( nullptr, head_ );
-    }
-    [[nodiscard]] block_pointer add_to_tail ( block_pointer tail_ ) noexcept {
-        return tail_->next = block::make ( tail_, nullptr );
-    }
-
-    void add_to_head ( ) noexcept { head = add_to_head ( head ); }
-    void add_to_tail ( ) noexcept { tail = add_to_tail ( tail ); }
-
-    void move_tail_to_head ( ) noexcept {
-        block_pointer new_tail = tail->prev;
-        // New sentinels.
-        new_tail->next = nullptr;
-        tail->prev     = nullptr;
-        // Move to front.
-        tail->next = head;
-        head->prev = tail;
-        // Final assignments.
-        head = tail;
-        tail = new_tail;
-    }
-
-    void move_head_to_tail ( ) noexcept {
-        block_pointer new_head = head->next;
-        // New sentinels.
-        new_head->prev = nullptr;
-        head->next     = nullptr;
-        // Move to back.
-        head->prev = tail;
-        tail->next = head;
-        // Final assignments.
-        tail = head;
-        head = new_head;
-    }
+    [[nodiscard]] bool empty ( ) const noexcept { return head == tail; }
 
     void print ( ) noexcept {
-        block_pointer ptr = head;
+        block_pointer ptr = sto_head;
         while ( ptr ) {
-            std::cout << ptr << ' ' << ptr->prev << ' ' << ptr->next << nl;
+            std::cout << ptr << ' ' << ptr->next << nl;
             ptr = ptr->next;
         }
         std::cout << nl;
+    }
+
+    private:
+    [[nodiscard]] block_pointer add_storage_to_tail ( block_pointer tail_ ) noexcept { return tail_->next = block::make ( ); }
+
+    void add_storage_to_tail ( ) noexcept { sto_tail = add_storage_to_tail ( sto_tail ); }
+
+    void move_storage_head_to_tail ( ) noexcept {
+        block_pointer new_head = sto_head->next;
+        sto_head->next         = nullptr;
+        sto_tail->next         = sto_head;
+        sto_tail               = sto_head;
+        sto_head               = new_head;
     }
 };
 
 int main ( ) {
 
-    dll<int> l1;
+    queue<int, 4> queue;
 
-    l1.add_to_head ( );
-    l1.add_to_head ( );
-    l1.add_to_tail ( );
-    l1.add_to_head ( );
-    l1.add_to_head ( );
-
-    l1.print ( );
-
-    l1.move_tail_to_head ( );
-
-    l1.print ( );
-
-    l1.move_head_to_tail ( );
-
-    l1.print ( );
-
-    /*
-    queue<int> queue;
     queue.push ( 5 );
     queue.push ( 4 );
     queue.push ( 3 );
@@ -334,57 +213,11 @@ int main ( ) {
     queue.push ( 0 );
     queue.push ( -1 );
     queue.push ( -2 );
+
     for ( auto x = 0; x < 8; ++x ) {
         std::cout << queue.front ( ) << '\n';
         queue.pop ( );
     }
-    */
-
-    return EXIT_SUCCESS;
-}
-
-template<std::size_t N>
-struct MyAllocator {
-
-    char m_data[ N ];
-    void * p;
-    std::size_t sz;
-
-    MyAllocator ( ) : p ( m_data ), sz ( N ) {}
-
-    template<typename T>
-    T * aligned_alloc ( std::size_t a = alignof ( T ) ) {
-        if ( std::align ( a, sizeof ( T ), p, sz ) ) {
-            T * result = reinterpret_cast<T *> ( p );
-            p          = ( char * ) p + sizeof ( T );
-            sz -= sizeof ( T );
-            return result;
-        }
-        return nullptr;
-    }
-};
-
-int main0809 ( ) {
-
-    MyAllocator<64> a;
-
-    // allocate a char
-    char * p1 = a.aligned_alloc<char> ( );
-    if ( p1 )
-        *p1 = 'a';
-    std::cout << "allocated a char at " << ( void * ) p1 << '\n';
-
-    // allocate an int
-    int * p2 = a.aligned_alloc<int> ( );
-    if ( p2 )
-        *p2 = 1;
-    std::cout << "allocated an int at " << ( void * ) p2 << '\n';
-
-    // allocate an int, aligned at 32-byte boundary
-    int * p3 = a.aligned_alloc<int> ( 32 );
-    if ( p3 )
-        *p3 = 2;
-    std::cout << "allocated an int at " << ( void * ) p3 << " (32 byte alignment)\n";
 
     return EXIT_SUCCESS;
 }
