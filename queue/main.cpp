@@ -52,24 +52,24 @@
 
 namespace detail {
 template<typename Type, std::size_t Size>
-struct block {
+struct storage {
 
-    using value_type    = Type;
-    using block_type    = std::array<value_type, Size>;
-    using block_pointer = block *;
-    using iterator      = typename block_type::iterator;
+    using value_type      = Type;
+    using storage_type    = std::array<value_type, Size>;
+    using storage_pointer = storage *;
+    using iterator        = typename storage_type::iterator;
 
-    block_pointer next = nullptr;
-    block_type data;
+    storage_pointer next = nullptr;
+    storage_type data;
 
     // Operators new/delete.
     [[nodiscard]] static void * operator new ( std::size_t ) noexcept {
-        return MALLOC ( sizeof ( block ) );
+        return MALLOC ( sizeof ( storage ) );
     } // OOM not handled, crash is to be expected.
     static void operator delete ( void * ptr_ ) noexcept { FREE ( ptr_ ); }
 
     // Factory.
-    [[nodiscard]] static block_pointer make ( ) noexcept { return reinterpret_cast<block_pointer> ( new block ); }
+    [[nodiscard]] static storage_pointer make ( ) noexcept { return reinterpret_cast<storage_pointer> ( new storage ); }
 
     // Iterators.
     [[nodiscard]] iterator begin ( ) noexcept { return std::begin ( data ); }
@@ -83,8 +83,8 @@ struct block {
 template<typename Type, std::size_t Size = 16u>
 class queue {
 
-    using block         = detail::block<Type, Size>;
-    using block_pointer = block *;
+    using storage         = detail::storage<Type, Size>;
+    using storage_pointer = storage *;
 
     using value_type    = Type;
     using pointer       = value_type *;
@@ -96,19 +96,19 @@ class queue {
 
     using size_type = std::size_t;
 
-    using iterator = typename block::iterator;
+    using iterator = typename storage::iterator;
 
-    block_pointer storage_head, storage_tail;
+    storage_pointer storage_head, storage_tail;
     iterator head, tail;
 
     public:
     queue ( ) noexcept :
-        storage_head{ block::make ( ) }, storage_tail{ storage_head }, head{ storage_head->begin ( ) }, tail{ head } {}
+        storage_head{ storage::make ( ) }, storage_tail{ storage_head }, head{ storage_head->begin ( ) }, tail{ head } {}
 
     ~queue ( ) noexcept {
         while ( storage_head ) {
-            block_pointer tmp = storage_head->next;
-            block::operator delete ( reinterpret_cast<void *> ( storage_head ) );
+            storage_pointer tmp = storage_head->next;
+            storage::operator delete ( reinterpret_cast<void *> ( storage_head ) );
             storage_head = std::move ( tmp );
         }
     }
@@ -116,7 +116,7 @@ class queue {
     template<typename... Args>
     void emplace ( Args &&... args_ ) noexcept {
         if ( storage_tail->end ( ) == tail ) {
-            storage_tail = storage_tail->next = block::make ( );
+            storage_tail = storage_tail->next = storage::make ( );
             tail                              = storage_tail->begin ( );
         }
         *tail++ = { std::forward<Args> ( args_ )... };
@@ -124,14 +124,14 @@ class queue {
 
     void push ( rv_reference value_ ) noexcept {
         if ( storage_tail->end ( ) == tail ) {
-            storage_tail = storage_tail->next = block::make ( );
+            storage_tail = storage_tail->next = storage::make ( );
             tail                              = storage_tail->begin ( );
         }
         *tail++ = std::move ( value_ );
     }
     void push ( const_reference value_ ) noexcept {
         if ( storage_tail->end ( ) == tail ) {
-            storage_tail = storage_tail->next = block::make ( );
+            storage_tail = storage_tail->next = storage::make ( );
             tail                              = storage_tail->begin ( );
         }
         *tail++ = value_;
@@ -139,8 +139,8 @@ class queue {
 
     void pop ( ) noexcept {
         if ( storage_head->end ( ) == ++head ) {
-            block_pointer new_head = storage_head->next;
-            storage_head->next     = nullptr;
+            storage_pointer new_head = storage_head->next;
+            storage_head->next       = nullptr;
             storage_tail = storage_tail->next = storage_head;
             storage_head                      = new_head;
             head                              = storage_head->begin ( );
@@ -152,8 +152,8 @@ class queue {
 
     [[nodiscard]] bool empty ( ) const noexcept { return &*head == &*tail; }
 
-    void print_block_pointers ( ) const noexcept {
-        block_pointer ptr = storage_head;
+    void print_storage_pointers ( ) const noexcept {
+        storage_pointer ptr = storage_head;
         while ( ptr ) {
             std::cout << ptr << ' ' << ptr->next << nl;
             ptr = ptr->next;
@@ -163,8 +163,8 @@ class queue {
 
     template<typename Stream>
     [[maybe_unused]] friend Stream & operator<< ( Stream & out_, queue const & q_ ) noexcept {
-        block_pointer ptr = q_.storage_head;
-        iterator curr     = q_.head;
+        storage_pointer ptr = q_.storage_head;
+        iterator curr       = q_.head;
         while ( ptr ) {
             if ( &*curr == &*q_.tail ) // Could be iterators in different containers, so compare the underlying pointer.
                 break;
