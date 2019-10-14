@@ -185,7 +185,7 @@ struct queue {
 
     [[nodiscard]] value_type front ( ) const noexcept { return *head; }
 
-    [[nodiscard]] bool empty ( ) const noexcept { return head == tail; }
+    [[nodiscard]] bool empty ( ) const noexcept { return &*head == &*tail; }
 
     void print_block_pointers ( ) const noexcept {
         block_pointer ptr = sto_head;
@@ -201,7 +201,7 @@ struct queue {
         block_pointer ptr = q_.sto_head;
         iterator curr     = q_.head;
         while ( ptr ) {
-            if ( &*curr == &*q_.tail )
+            if ( &*curr == &*q_.tail ) // Could be iterators in different containers, so compare the underlying pointer.
                 break;
             if constexpr ( std::is_same<typename Stream::char_type, wchar_t>::value ) {
                 out_ << *curr << L' ';
@@ -246,7 +246,7 @@ int main ( ) {
     queue.push ( -1 );
     queue.emplace ( -2 );
 
-    std::cout << queue << nl;
+    std::cout << queue.empty ( ) << ' ' << queue << nl;
 
     return EXIT_SUCCESS;
 }
