@@ -27,44 +27,13 @@
 #include <cstdlib>
 
 #include <array>
-#include <filesystem>
-#include <fstream>
 #include <sax/iostream.hpp>
 #include <iterator>
-#include <list>
-#include <map>
-#include <optional>
 #include <random>
-#include <string>
 #include <type_traits>
 #include <vector>
 
-namespace fs = std::filesystem;
-
-#define PRIVATE
-#define PUBLIC public:
-
-namespace detail { // keep the macros out of the code (as it's ugly).
-#ifdef _DEBUG
-using is_debug   = std::true_type;
-using is_release = std::false_type;
-#else
-using is_debug   = std::false_type;
-using is_release = std::true_type;
-#endif
-} // namespace detail
-
-template<int I>
-void div ( char ( * )[ I % 2 == 0 ] = 0 ) {
-    // this is taken when I is even.
-}
-
-template<int I>
-void div ( char ( * )[ I % 2 == 1 ] = 0 ) {
-    // this is taken when I is odd.
-}
-
-// costumization point.
+// Customization point.
 #define USE_MIMALLOC true
 
 #if USE_MIMALLOC
@@ -74,56 +43,47 @@ void div ( char ( * )[ I % 2 == 1 ] = 0 ) {
 #        define USE_MIMALLOC_LTO true
 #    endif
 #    include <mimalloc.h>
-#endif
-
-namespace pdr {
-#if USE_MIMALLOC
-[[nodiscard]] inline void * malloc ( std::size_t size ) noexcept { return mi_malloc ( size ); }
-[[nodiscard]] inline void * zalloc ( std::size_t size ) noexcept { return mi_zalloc ( size ); }
-[[nodiscard]] inline void * calloc ( std::size_t num, std::size_t size ) noexcept { return mi_calloc ( num, size ); }
-[[nodiscard]] inline void * realloc ( void * ptr, std::size_t new_size ) noexcept { return mi_realloc ( ptr, new_size ); }
-inline void free ( void * ptr ) noexcept { mi_free ( ptr ); }
+#    define MALLOC mi_malloc
+#    define FREE mi_free
 #else
-[[nodiscard]] inline void * malloc ( std::size_t size ) noexcept { return std::malloc ( size ); }
-[[nodiscard]] inline void * zalloc ( std::size_t size ) noexcept { return std::calloc ( 1u, size ); }
-[[nodiscard]] inline void * calloc ( std::size_t num, std::size_t size ) noexcept { return std::calloc ( num, size ); }
-[[nodiscard]] inline void * realloc ( void * ptr, std::size_t new_size ) noexcept { return std::realloc ( ptr, new_size ); }
-inline void free ( void * ptr ) noexcept { std::free ( ptr ); }
+#    define MALLOC std::malloc
+#    define FREE std::free
 #endif
-} // namespace pdr
 
-template<typename Type, std::size_t N>
+namespace detail {
+template<typename Type, std::size_t Size>
 struct block {
 
     using value_type    = Type;
-    using block_type    = std::array<value_type, N>;
+    using block_type    = std::array<value_type, Size>;
     using block_pointer = block *;
     using iterator      = typename block_type::iterator;
 
     block_pointer next = nullptr;
+    block_type data;
 
-    private:
-    block_type m_data;
-
-    public:
-    // Constructor.
-    explicit block ( ) noexcept {}
     // Operator new/delete.
     [[nodiscard]] static void * operator new ( std::size_t ) noexcept {
-        return pdr::malloc ( sizeof ( block ) );
-    } // O-o-m not handled, crash is to be expected.
-    static void operator delete ( void * ptr_ ) noexcept { pdr::free ( ptr_ ); }
+        return MALLOC ( sizeof ( block ) );
+    } // OOM not handled, crash is to be expected.
+    static void operator delete ( void * ptr_ ) noexcept { FREE ( ptr_ ); }
+
     // Factory.
     [[nodiscard]] static block_pointer make ( ) noexcept { return reinterpret_cast<block_pointer> ( new block ); }
+
     // Iterators.
-    [[nodiscard]] iterator begin ( ) noexcept { return std::begin ( m_data ); }
-    [[nodiscard]] iterator end ( ) noexcept { return std::end ( m_data ); }
+    [[nodiscard]] iterator begin ( ) noexcept { return std::begin ( data ); }
+    [[nodiscard]] iterator end ( ) noexcept { return std::end ( data ); }
 };
+} // namespace detail
+
+#undef MALLOC
+#undef FREE
 
 template<typename Type, std::size_t Size = 16u>
-struct queue {
+class queue {
 
-    using block         = block<Type, Size>;
+    using block         = detail::block<Type, Size>;
     using block_pointer = block *;
 
     using value_type    = Type;
@@ -138,57 +98,59 @@ struct queue {
 
     using iterator = typename block::iterator;
 
-    block_pointer sto_head, sto_tail;
+    block_pointer storage_head, storage_tail;
     iterator head, tail;
 
-    queue ( ) noexcept : sto_head{ block::make ( ) }, sto_tail{ sto_head }, head{ std::begin ( *sto_head ) }, tail{ head } {}
+    public:
+    queue ( ) noexcept :
+        storage_head{ block::make ( ) }, storage_tail{ storage_head }, head{ storage_head->begin ( ) }, tail{ head } {}
 
     ~queue ( ) noexcept {
-        while ( sto_head ) {
-            block_pointer tmp = sto_head->next;
-            block::operator delete ( reinterpret_cast<void *> ( sto_head ) );
-            sto_head = std::move ( tmp );
+        while ( storage_head ) {
+            block_pointer tmp = storage_head->next;
+            block::operator delete ( reinterpret_cast<void *> ( storage_head ) );
+            storage_head = std::move ( tmp );
         }
     }
 
     template<typename... Args>
     void emplace ( Args &&... args_ ) noexcept {
-        if ( std::end ( *sto_tail ) == tail ) {
+        if ( storage_tail->end ( ) == tail ) {
             add_storage_to_tail ( );
-            tail = std::begin ( *sto_tail );
+            tail = storage_tail->begin ( );
         }
         *tail++ = { std::forward<Args> ( args_ )... };
     }
 
     void push ( rv_reference value_ ) noexcept {
-        if ( std::end ( *sto_tail ) == tail ) {
+        if ( storage_tail->end ( ) == tail ) {
             add_storage_to_tail ( );
-            tail = std::begin ( *sto_tail );
+            tail = storage_tail->begin ( );
         }
         *tail++ = std::move ( value_ );
     }
-
     void push ( const_reference value_ ) noexcept {
-        if ( std::end ( *sto_tail ) == tail ) {
+        if ( storage_tail->end ( ) == tail ) {
             add_storage_to_tail ( );
-            tail = std::begin ( *sto_tail );
+            tail = storage_tail->begin ( );
         }
         *tail++ = value_;
     }
 
     void pop ( ) noexcept {
-        if ( std::end ( *sto_head ) == ++head ) {
+        if ( storage_head->end ( ) == ++head ) {
             move_storage_head_to_tail ( );
-            head = std::begin ( *sto_head );
+            head = storage_head->begin ( );
         }
     }
 
-    [[nodiscard]] value_type front ( ) const noexcept { return *head; }
+    [[nodiscard]] reference front ( ) noexcept { return *head; }
+    [[nodiscard]] const_reference front ( ) const noexcept { return *head; }
 
     [[nodiscard]] bool empty ( ) const noexcept { return &*head == &*tail; }
 
     void print_block_pointers ( ) const noexcept {
-        block_pointer ptr = sto_head;
+        block_pointer ptr = storage_head;
         while ( ptr ) {
             std::cout << ptr << ' ' << ptr->next << nl;
             ptr = ptr->next;
@@ -198,7 +160,7 @@ struct queue {
 
     template<typename Stream>
     [[maybe_unused]] friend Stream & operator<< ( Stream & out_, queue const & q_ ) noexcept {
-        block_pointer ptr = q_.sto_head;
+        block_pointer ptr = q_.storage_head;
         iterator curr     = q_.head;
         while ( ptr ) {
             if ( &*curr == &*q_.tail ) // Could be iterators in different containers, so compare the underlying pointer.
@@ -209,10 +171,10 @@ struct queue {
             else {
                 out_ << *curr << ' ';
             }
-            if ( std::end ( *ptr ) == ++curr ) {
+            if ( ptr->end ( ) == ++curr ) {
                 ptr = ptr->next;
                 if ( ptr )
-                    curr = std::begin ( *ptr );
+                    curr = ptr->begin ( );
             }
         }
         return out_;
@@ -220,15 +182,14 @@ struct queue {
 
     private:
     [[nodiscard]] block_pointer add_storage_to_tail ( block_pointer tail_ ) noexcept { return tail_->next = block::make ( ); }
-
-    void add_storage_to_tail ( ) noexcept { sto_tail = add_storage_to_tail ( sto_tail ); }
+    void add_storage_to_tail ( ) noexcept { storage_tail = add_storage_to_tail ( storage_tail ); }
 
     void move_storage_head_to_tail ( ) noexcept {
-        block_pointer new_head = sto_head->next;
-        sto_head->next         = nullptr;
-        sto_tail->next         = sto_head;
-        sto_tail               = sto_head;
-        sto_head               = new_head;
+        block_pointer new_head = storage_head->next;
+        storage_head->next     = nullptr;
+        storage_tail->next     = storage_head;
+        storage_tail           = storage_head;
+        storage_head           = new_head;
     }
 };
 
