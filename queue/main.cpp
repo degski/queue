@@ -116,23 +116,32 @@ class queue {
     template<typename... Args>
     void emplace ( Args &&... args_ ) noexcept {
         if ( storage_tail->end ( ) == tail ) {
-            storage_tail = storage_tail->next = storage::make ( );
-            tail                              = storage_tail->begin ( );
+            if ( storage_tail->next )
+                storage_tail = storage_tail->next;
+            else
+                storage_tail = storage_tail->next = storage::make ( );
+            tail = storage_tail->begin ( );
         }
         *tail++ = { std::forward<Args> ( args_ )... };
     }
 
     void push ( rv_reference value_ ) noexcept {
         if ( storage_tail->end ( ) == tail ) {
-            storage_tail = storage_tail->next = storage::make ( );
-            tail                              = storage_tail->begin ( );
+            if ( storage_tail->next )
+                storage_tail = storage_tail->next;
+            else
+                storage_tail = storage_tail->next = storage::make ( );
+            tail = storage_tail->begin ( );
         }
         *tail++ = std::move ( value_ );
     }
     void push ( const_reference value_ ) noexcept {
         if ( storage_tail->end ( ) == tail ) {
-            storage_tail = storage_tail->next = storage::make ( );
-            tail                              = storage_tail->begin ( );
+            if ( storage_tail->next )
+                storage_tail = storage_tail->next;
+            else
+                storage_tail = storage_tail->next = storage::make ( );
+            tail = storage_tail->begin ( );
         }
         *tail++ = value_;
     }
@@ -141,9 +150,14 @@ class queue {
         if ( storage_head->end ( ) == ++head ) {
             storage_pointer new_storage_head = storage_head->next;
             storage_head->next               = nullptr;
-            storage_tail = storage_tail->next = storage_head;
-            storage_head                      = new_storage_head;
-            head                              = storage_head->begin ( );
+            // Find an empty next storage slot.
+            storage_pointer ptr_next = storage_tail->next;
+            while ( ptr_next )
+                ptr_next = ptr_next->next;
+            ptr_next = storage_head;
+            // Final assignments.
+            storage_head = new_storage_head;
+            head         = storage_head->begin ( );
         }
     }
 
@@ -175,6 +189,8 @@ class queue {
                 out_ << *curr << ' ';
             }
             if ( ptr->end ( ) == ++curr ) {
+                if ( ptr == q_.storage_tail )
+                    break;
                 ptr = ptr->next;
                 if ( ptr )
                     curr = ptr->begin ( );
