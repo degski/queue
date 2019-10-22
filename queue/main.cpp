@@ -33,14 +33,30 @@
 #include <type_traits>
 #include <vector>
 
+#include <benchmark/benchmark.h>
+
+#ifdef _WIN32
+#    pragma comment( lib, "Shlwapi.lib" )
+#    ifndef NDEBUG
+#        pragma comment( lib, "benchmark_maind.lib" )
+#        pragma comment( lib, "benchmarkd.lib" )
+#    else
+#        pragma comment( lib, "benchmark_main.lib" )
+#        pragma comment( lib, "benchmark.lib" )
+#    endif
+#endif
+
+#include <sax/splitmix.hpp>
+#include <sax/uniform_int_distribution.hpp>
+
 // Customization point.
 #define USE_MIMALLOC true
 
 #if USE_MIMALLOC
-#    if defined( _DEBUG )
-#        define USE_MIMALLOC_LTO false
-#    else
+#    if defined( NDEBUG )
 #        define USE_MIMALLOC_LTO true
+#    else
+#        define USE_MIMALLOC_LTO false
 #    endif
 #    include <mimalloc.h>
 #    define MALLOC mi_malloc
