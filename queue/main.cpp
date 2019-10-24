@@ -216,9 +216,26 @@ class queue {
     }
 };
 
+#include <queue>
+#include <plf/plf_list.h>
+
+template<typename T>
+using plf_queue = std::queue<T, plf::list<T>>;
+
+template<typename Stream, typename T>
+[[maybe_unused]] Stream & operator<< ( Stream & out_, plf_queue<T> const & q_ ) noexcept {
+    plf_queue<T> q{ q_ };
+    while ( q.size ( ) ) {
+        out_ << q.front ( ) << ' ';
+        q.pop ( );
+    }
+    out_ << nl;
+    return out_;
+}
+
 int main ( ) {
 
-    queue<int, 4> queue;
+    plf_queue<int> queue;
 
     queue.push ( 6 );
     queue.push ( 5 );
