@@ -48,6 +48,7 @@
 
 #include <sax/splitmix.hpp>
 #include <sax/uniform_int_distribution.hpp>
+#include "uniformly_decreasing_discrete_distribution_vose.hpp"
 
 // Customization point.
 #define USE_MIMALLOC true
@@ -233,21 +234,18 @@ template<typename Stream, typename T>
     return out_;
 }
 
+sax::splitmix64 rng1{ 123u };
+sax::splitmix64 rng2{ 123u };
+
+[[nodiscard]] int get_no_ops ( sax::splitmix64 & rng_ ) {
+    static uniformly_decreasing_discrete_distribution<16, int> dis;
+    return dis ( rng_ );
+}
+
 int main ( ) {
 
-    plf_queue<int> queue;
-
-    queue.push ( 6 );
-    queue.push ( 5 );
-    queue.push ( 4 );
-    queue.push ( 3 );
-    queue.push ( 2 );
-    queue.push ( 1 );
-    queue.push ( 0 );
-    queue.push ( -1 );
-    queue.emplace ( -2 );
-
-    std::cout << queue.empty ( ) << ' ' << queue << nl;
+    for ( int i = 0; i < 16; ++i )
+        std::cout << get_no_ops ( rng1 ) << nl;
 
     return EXIT_SUCCESS;
 }
