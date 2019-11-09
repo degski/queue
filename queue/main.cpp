@@ -75,9 +75,13 @@ struct storage {
     using storage_type    = std::array<value_type, Size>;
     using storage_pointer = storage *;
     using iterator        = typename storage_type::iterator;
+    using const_iterator  = typename storage_type::const_iterator;
+
+    using pointer       = typename storage_type::pointer;
+    using const_pointer = typename storage_type::const_pointer;
 
     storage_pointer next = nullptr;
-    storage_type data;
+    storage_type m_data;
 
     // Operators new/delete.
     [[nodiscard]] static void * operator new ( std::size_t ) noexcept {
@@ -89,8 +93,13 @@ struct storage {
     [[nodiscard]] static storage_pointer make ( ) noexcept { return reinterpret_cast<storage_pointer> ( new storage ); }
 
     // Iterators.
-    [[nodiscard]] iterator begin ( ) noexcept { return std::begin ( data ); }
-    [[nodiscard]] iterator end ( ) noexcept { return std::end ( data ); }
+    [[nodiscard]] iterator begin ( ) noexcept { return std::begin ( m_data ); }
+    [[nodiscard]] iterator end ( ) noexcept { return std::end ( m_data ); }
+    [[nodiscard]] const_iterator begin ( ) const noexcept { return std::begin ( m_data ); }
+    [[nodiscard]] const_iterator end ( ) const noexcept { return std::end ( m_data ); }
+
+    [[nodiscard]] pointer data ( ) noexcept { return m_data.data ( ); }
+    [[nodiscard]] const_pointer data ( ) const noexcept { return m_data.data ( ); }
 };
 } // namespace detail
 
@@ -116,11 +125,11 @@ class queue {
     using iterator = typename storage::iterator;
 
     storage_pointer storage_head, storage_tail;
-    iterator head, tail;
+    pointer head, tail;
 
     public:
     queue ( ) noexcept :
-        storage_head{ storage::make ( ) }, storage_tail{ storage_head }, head{ storage_head->begin ( ) }, tail{ head } {}
+        storage_head{ storage::make ( ) }, storage_tail{ storage_head }, head{ storage_head->data ( ) }, tail{ head } {}
 
     ~queue ( ) noexcept {
         while ( storage_head ) {
@@ -132,60 +141,39 @@ class queue {
 
     template<typename... Args>
     void emplace ( Args &&... args_ ) noexcept {
-        if ( storage_tail->end ( ) == tail ) {
+        if ( ( storage_tail->data ( ) + Size ) == tail ) {
             if ( storage_tail->next )
                 storage_tail = storage_tail->next;
             else
-                storage_tail = storage_tail->next = storage::make ( );
-            tail = storage_tail->begin ( );
+                storage_tail = ( storage_tail->next = storage::make ( ) );
+            tail = storage_tail->data ( );
         }
         *tail++ = { std::forward<Args> ( args_ )... };
     }
 
-    void push ( rv_reference value_ ) noexcept {
-        if ( storage_tail->end ( ) == tail ) {
-            if ( storage_tail->next )
-                storage_tail = storage_tail->next;
-            else
-                storage_tail = storage_tail->next = storage::make ( );
-            tail = storage_tail->begin ( );
-        }
-        *tail++ = std::move ( value_ );
-    }
-    void push ( const_reference value_ ) noexcept {
-        if ( storage_tail->end ( ) == tail ) {
-            if ( storage_tail->next )
-                storage_tail = storage_tail->next;
-            else
-                storage_tail = storage_tail->next = storage::make ( );
-            tail = storage_tail->begin ( );
-        }
-        *tail++ = value_;
-    }
-
     void pop ( ) noexcept {
-
-        if ( storage_head->end ( ) == ++head ) {
-
+        if ( ( storage_head->data ( ) + ( Size - 1 ) ) == head ) {
             storage_pointer new_storage_head = storage_head->next;
             storage_head->next               = nullptr;
             // Find an empty next storage slot.
-            storage_pointer ptr_next = storage_tail;
-
-            while ( ptr_next->next )
-                ptr_next = ptr_next->next;
-
-            ptr_next->next = storage_head;
+            storage_pointer ptr = storage_tail;
+            while ( ptr->next )
+                ptr = ptr->next;
+            ptr->next = storage_head;
             // Final assignments.
             storage_head = new_storage_head;
-            head         = storage_head->begin ( );
+            head         = storage_head->data ( );
         }
+        else
+            ++head;
     }
 
     [[nodiscard]] reference front ( ) noexcept { return *head; }
     [[nodiscard]] const_reference front ( ) const noexcept { return *head; }
 
-    [[nodiscard]] bool empty ( ) const noexcept { return &*head == &*tail; }
+    [[nodiscard]] bool empty ( ) const noexcept { return head == tail; }
+
+    void print_head_tail ( ) const noexcept { std::cout << "head " << head << " tail " << tail << nl; }
 
     void print_storage_pointers ( ) const noexcept {
         storage_pointer ptr = storage_head;
@@ -199,9 +187,9 @@ class queue {
     template<typename Stream>
     [[maybe_unused]] friend Stream & operator<< ( Stream & out_, queue const & q_ ) noexcept {
         storage_pointer ptr = q_.storage_head;
-        iterator curr       = q_.head;
+        pointer curr        = q_.head;
         while ( ptr ) {
-            if ( &*curr == &*q_.tail ) // Could be iterators in different containers, so compare the underlying pointer.
+            if ( curr == q_.tail ) // Compare the pointer.
                 break;
             if constexpr ( std::is_same<typename Stream::char_type, wchar_t>::value ) {
                 out_ << *curr << L' ';
@@ -209,12 +197,12 @@ class queue {
             else {
                 out_ << *curr << ' ';
             }
-            if ( ptr->end ( ) == ++curr ) {
+            if ( ( ptr->data ( ) + ( Size - 1 ) ) == curr++ ) {
                 if ( ptr == q_.storage_tail )
                     break;
                 ptr = ptr->next;
                 if ( ptr )
-                    curr = ptr->begin ( );
+                    curr = ptr->data ( );
             }
         }
         return out_;
@@ -258,21 +246,22 @@ enum op { enqueue, dequeue };
 
 op op_1{ op::enqueue }, op_2{ op::enqueue };
 
-std_queue<int> q_1;
-bst_queue<int> q_2;
-queue<int, 4> q_3;
+std_queue<int> q_3;
+
+bst_queue<int> q_1;
+queue<int, 8> q_2;
 
 int s_1 = 0, s_2 = 0;
 
 sax::uniform_int_distribution<int> dis{ 1, 1'000 };
 
-int main978979 ( ) {
+int main899yu ( ) {
 
     plf::nanotimer t_1;
 
     t_1.start ( );
 
-    for ( int i = 0; i < 10'000'000; ++i ) {
+    for ( int i = 0; i < 1'000'000; ++i ) {
         int const no_ops = get_no_ops ( rng_1 );
         for ( int o = 0; o < no_ops; ++o ) {
             if ( op::dequeue == op_1 ) { // dequeue.
@@ -297,7 +286,7 @@ int main978979 ( ) {
 
     t_2.start ( );
 
-    for ( int i = 0; i < 10'000'000; ++i ) {
+    for ( int i = 0; i < 1'000'000; ++i ) {
         int const no_ops = get_no_ops ( rng_2 );
         for ( int o = 0; o < no_ops; ++o ) {
             if ( op::dequeue == op_2 ) { // dequeue.
@@ -359,20 +348,53 @@ int main ( ) {
 
     queue<int, 4> q;
 
+    q.print_head_tail ( );
+
     for ( int i = 0; i < 19; ++i ) {
         q.emplace ( i );
+        q.print_head_tail ( );
     }
 
     q.print_storage_pointers ( );
     std::cout << nl << q << nl;
 
-    for ( int i = 0; i < 5; ++i ) {
-        q.pop ( );
+    q.print_head_tail ( );
+
+    for ( int i = 0; i < 25; ++i ) {
+        if ( not q.empty ( ) ) {
+            q.pop ( );
+        }
+        else {
+            q.emplace ( 123 );
+        }
+        q.print_head_tail ( );
     }
 
     q.print_storage_pointers ( );
     std::cout << nl << q << nl;
-
 
     return EXIT_SUCCESS;
 }
+
+/*
+void push ( rv_reference value_ ) noexcept {
+if ( storage_tail->end ( ) == tail ) {
+    if ( storage_tail->next )
+        storage_tail = storage_tail->next;
+    else
+        storage_tail = storage_tail->next = storage::make ( );
+    tail = storage_tail->begin ( );
+}
+*tail++ = std::move ( value_ );
+}
+void push ( const_reference value_ ) noexcept {
+if ( storage_tail->end ( ) == tail ) {
+    if ( storage_tail->next )
+        storage_tail = storage_tail->next;
+    else
+        storage_tail = storage_tail->next = storage::make ( );
+    tail = storage_tail->begin ( );
+}
+*tail++ = value_;
+}
+*/
