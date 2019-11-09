@@ -164,14 +164,18 @@ class queue {
     }
 
     void pop ( ) noexcept {
+
         if ( storage_head->end ( ) == ++head ) {
+
             storage_pointer new_storage_head = storage_head->next;
             storage_head->next               = nullptr;
             // Find an empty next storage slot.
-            storage_pointer ptr_next = storage_tail->next;
-            while ( ptr_next )
+            storage_pointer ptr_next = storage_tail;
+
+            while ( ptr_next->next )
                 ptr_next = ptr_next->next;
-            ptr_next = storage_head;
+
+            ptr_next->next = storage_head;
             // Final assignments.
             storage_head = new_storage_head;
             head         = storage_head->begin ( );
@@ -219,9 +223,18 @@ class queue {
 
 #include <queue>
 #include <plf/plf_list.h>
+#include <plf/plf_nanotimer.h>
+
+#include <boost/container/deque.hpp>
 
 template<typename T>
 using plf_queue = std::queue<T, plf::list<T>>;
+
+template<typename T>
+using bst_queue = std::queue<T, boost::container::deque<T>>;
+
+template<typename T>
+using std_queue = std::queue<T, std::deque<T>>;
 
 template<typename Stream, typename T>
 [[maybe_unused]] Stream & operator<< ( Stream & out_, plf_queue<T> const & q_ ) noexcept {
@@ -234,18 +247,132 @@ template<typename Stream, typename T>
     return out_;
 }
 
-sax::splitmix64 rng1{ 123u };
-sax::splitmix64 rng2{ 123u };
+sax::splitmix64 rng_1{ 123u }, rng_2{ 123u };
 
 [[nodiscard]] int get_no_ops ( sax::splitmix64 & rng_ ) {
-    static uniformly_decreasing_discrete_distribution<16, int> dis;
-    return dis ( rng_ );
+    static uniformly_decreasing_discrete_distribution<32, int> dis;
+    return dis ( rng_ ) + 1;
 }
+
+enum op { enqueue, dequeue };
+
+op op_1{ op::enqueue }, op_2{ op::enqueue };
+
+std_queue<int> q_1;
+bst_queue<int> q_2;
+queue<int, 4> q_3;
+
+int s_1 = 0, s_2 = 0;
+
+sax::uniform_int_distribution<int> dis{ 1, 1'000 };
+
+int main978979 ( ) {
+
+    plf::nanotimer t_1;
+
+    t_1.start ( );
+
+    for ( int i = 0; i < 10'000'000; ++i ) {
+        int const no_ops = get_no_ops ( rng_1 );
+        for ( int o = 0; o < no_ops; ++o ) {
+            if ( op::dequeue == op_1 ) { // dequeue.
+                if ( not q_1.empty ( ) ) {
+                    s_1 += q_1.front ( );
+                    q_1.pop ( );
+                }
+                else {
+                    break;
+                }
+            }
+            else { // enqueue.
+                q_1.emplace ( dis ( rng_1 ) );
+            }
+        }
+        op_1 = ( op ) ( not op_1 );
+    }
+
+    std::int64_t time_1 = ( std::int64_t ) t_1.get_elapsed_ms ( );
+
+    plf::nanotimer t_2;
+
+    t_2.start ( );
+
+    for ( int i = 0; i < 10'000'000; ++i ) {
+        int const no_ops = get_no_ops ( rng_2 );
+        for ( int o = 0; o < no_ops; ++o ) {
+            if ( op::dequeue == op_2 ) { // dequeue.
+                if ( not q_2.empty ( ) ) {
+                    s_2 += q_2.front ( );
+                    q_2.pop ( );
+                }
+                else {
+                    break;
+                }
+            }
+            else { // enqueue.
+                q_2.emplace ( dis ( rng_2 ) );
+            }
+        }
+        op_2 = ( op ) ( not op_2 );
+    }
+
+    std::int64_t time_2 = ( std::int64_t ) t_2.get_elapsed_ms ( );
+
+    std::cout << time_1 << " ms           " << s_1 << nl;
+    std::cout << time_2 << " ms           " << s_2 << nl;
+
+    return EXIT_SUCCESS;
+}
+
+using std::string_view_literals::operator""sv ;
+
+class widget {
+    const std::string_view name = "I'm a widget"sv;
+    friend std::ostream & operator<< ( std::ostream & os, const widget & w );
+};
+
+class doodad {
+    const std::string_view name = "I'm a doodad"sv;
+    friend std::ostream & operator<< ( std::ostream & os, const doodad & d );
+};
+
+std::ostream & operator<< ( std::ostream & os, const widget & w ) { return os << w.name; }
+std::ostream & operator<< ( std::ostream & os, const doodad & d ) { return os << d.name; }
+
+class experiment {
+    public:
+    auto get_entity ( ) {
+        struct result {
+            operator widget ( ) { return experiment->get_entity_as_widget ( ); }
+            operator doodad ( ) { return experiment->get_entity_as_doodad ( ); }
+            experiment * experiment;
+        };
+        return result{ this };
+    }
+
+    private:
+    static widget get_entity_as_widget ( ) { return widget{ }; }
+    static doodad get_entity_as_doodad ( ) { return doodad{ }; }
+};
 
 int main ( ) {
 
-    for ( int i = 0; i < 16; ++i )
-        std::cout << get_no_ops ( rng1 ) << nl;
+    queue<int, 4> q;
+
+    for ( int i = 0; i < 19; ++i ) {
+        q.emplace ( i );
+    }
+
+    q.print_storage_pointers ( );
+    std::cout << nl << q << nl;
+
+    for ( int i = 0; i < 5; ++i ) {
+        q.pop ( );
+    }
+
+    q.print_storage_pointers ( );
+    std::cout << nl << q << nl;
+
 
     return EXIT_SUCCESS;
 }
